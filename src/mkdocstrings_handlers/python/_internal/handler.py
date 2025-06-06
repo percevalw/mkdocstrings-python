@@ -263,6 +263,9 @@ class PythonHandler(BaseHandler):
                 _logger.debug(f"{len(unresolved)} aliases were still unresolved after {iterations} iterations")
                 _logger.debug(f"Unresolved aliases: {', '.join(sorted(unresolved))}")
 
+            if identifier not in self._modules_collection:
+                self.try_to_import(identifier, loader)
+
         try:
             doc_object = self._modules_collection[identifier]
         except KeyError as error:
@@ -276,6 +279,47 @@ class PythonHandler(BaseHandler):
                     doc_object.docstring.parser = parser
                     doc_object.docstring.parser_options = parser_options or {}
 
+        return doc_object
+
+
+    def try_to_import(self, identifier: str, loader):
+        import importlib.util
+        from pathlib import Path
+
+
+        parts = ()
+        doc_object = None
+        for part in identifier.split("."):
+            parts = parts + (part,)
+            sub_identifier = ".".join(parts)
+            spec = importlib.util.find_spec(".".join(parts))
+            if spec is None:
+                if doc_object is not None and part in doc_object.members:
+                    # If we already have a doc_object, we can just use it
+                    doc_object = doc_object.get_member(part)
+                    continue
+                raise CollectionError(f"Module {identifier} could not be found")
+            origin = spec.origin
+            if origin is None:
+                # Pick the first loc that is accessible from here (ie is a children of cwd)
+                origin = next(
+                    (
+                        loc
+                        for loc in spec.submodule_search_locations
+                        if loc.startswith(os.getcwd())
+                    ),
+                    None,
+                )
+
+            doc_object = loader._load_module(
+                part,
+                Path(origin),
+                parent=doc_object,
+            )
+            try:
+                self._modules_collection.set_member(sub_identifier, doc_object)
+            except:
+                pass
         return doc_object
 
     def render(self, data: CollectorItem, options: PythonOptions) -> str:
