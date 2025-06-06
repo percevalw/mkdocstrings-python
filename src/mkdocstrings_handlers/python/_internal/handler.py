@@ -228,9 +228,9 @@ class PythonHandler(BaseHandler):
         parser = parser_name and Parser(parser_name)
         parser_options = options.docstring_options and asdict(options.docstring_options)
 
-        if unknown_module:
+        def make_loader():
             extensions = self.normalize_extension_paths(options.extensions)
-            loader = GriffeLoader(
+            return GriffeLoader(
                 extensions=load_extensions(*extensions),
                 search_paths=self._paths,
                 docstring_parser=parser,
@@ -240,6 +240,10 @@ class PythonHandler(BaseHandler):
                 allow_inspection=options.allow_inspection,
                 force_inspection=options.force_inspection,
             )
+
+        loader = None
+        if unknown_module:
+            loader = make_loader()
             try:
                 for pre_loaded_module in options.preload_modules:
                     if pre_loaded_module not in self._modules_collection:
@@ -263,8 +267,10 @@ class PythonHandler(BaseHandler):
                 _logger.debug(f"{len(unresolved)} aliases were still unresolved after {iterations} iterations")
                 _logger.debug(f"Unresolved aliases: {', '.join(sorted(unresolved))}")
 
-            if identifier not in self._modules_collection:
-                self.try_to_import(identifier, loader)
+        if identifier not in self._modules_collection:
+            if loader is None:
+                loader = make_loader()
+            self.try_to_import(identifier, loader)
 
         try:
             doc_object = self._modules_collection[identifier]
@@ -285,7 +291,6 @@ class PythonHandler(BaseHandler):
     def try_to_import(self, identifier: str, loader):
         import importlib.util
         from pathlib import Path
-
 
         parts = ()
         doc_object = None
