@@ -292,29 +292,41 @@ class PythonHandler(BaseHandler):
         import importlib.util
         from pathlib import Path
 
+        parts = identifier.split(".")
+        origins = [None] * len(parts)
+        child_origin = None
+        for i in range(len(parts) - 1, -1, -1):
+            sub_identifier = ".".join(parts[:i + 1])
+            spec = importlib.util.find_spec(sub_identifier)
+            if spec is None:
+                continue
+            origin = spec.origin
+            if origin is None and child_origin is not None:
+                # Pick the first loc that is a parent of child_origin
+                origin = next(
+                    (
+                        loc
+                        for loc in spec.submodule_search_locations
+                        if child_origin.startswith(loc)
+                    ),
+                    None,
+                )
+            origins[i] = origin
+            if origin is not None:
+                child_origin = origin
+
         parts = ()
         doc_object = None
-        for part in identifier.split("."):
+        for i, part in enumerate(identifier.split(".")):
             parts = parts + (part,)
             sub_identifier = ".".join(parts)
-            spec = importlib.util.find_spec(".".join(parts))
-            if spec is None:
+            origin = origins[i]
+            if origin is None:
                 if doc_object is not None and part in doc_object.members:
                     # If we already have a doc_object, we can just use it
                     doc_object = doc_object.get_member(part)
                     continue
                 raise CollectionError(f"Module {identifier} could not be found")
-            origin = spec.origin
-            if origin is None:
-                # Pick the first loc that is accessible from here (ie is a children of cwd)
-                origin = next(
-                    (
-                        loc
-                        for loc in spec.submodule_search_locations
-                        if loc.startswith(os.getcwd())
-                    ),
-                    None,
-                )
 
             doc_object = loader._load_module(
                 part,
