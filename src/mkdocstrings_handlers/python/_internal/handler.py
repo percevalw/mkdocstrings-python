@@ -267,17 +267,21 @@ class PythonHandler(BaseHandler):
                 _logger.debug(f"{len(unresolved)} aliases were still unresolved after {iterations} iterations")
                 _logger.debug(f"Unresolved aliases: {', '.join(sorted(unresolved))}")
 
-        if identifier not in self._modules_collection:
+        doc_object = None
+        try:
+            doc_object = self._modules_collection[identifier]
+        except (KeyError, AliasResolutionError):
             if loader is None:
                 loader = make_loader()
             self.try_to_import(identifier, loader)
 
-        try:
-            doc_object = self._modules_collection[identifier]
-        except KeyError as error:
-            raise CollectionError(f"{identifier} could not be found") from error
-        except AliasResolutionError as error:
-            raise CollectionError(str(error)) from error
+        if doc_object is None:
+            try:
+                doc_object = self._modules_collection[identifier]
+            except KeyError as error:
+                raise CollectionError(f"{identifier} could not be found") from error
+            except AliasResolutionError as error:
+                raise CollectionError(str(error)) from error
 
         if not unknown_module and reapply:
             with suppress(AliasResolutionError):
@@ -297,7 +301,10 @@ class PythonHandler(BaseHandler):
         child_origin = None
         for i in range(len(parts) - 1, -1, -1):
             sub_identifier = ".".join(parts[:i + 1])
-            spec = importlib.util.find_spec(sub_identifier)
+            try:
+                spec = importlib.util.find_spec(sub_identifier)
+            except ModuleNotFoundError:
+                spec = None
             if spec is None:
                 continue
             origin = spec.origin
