@@ -308,7 +308,11 @@ class PythonHandler(BaseHandler):
             if spec is None:
                 continue
             origin = spec.origin
-            if origin is None and child_origin is not None:
+            if (
+                origin is None
+                and child_origin is not None
+                and spec.submodule_search_locations is not None
+            ):
                 # Pick the first loc that is a parent of child_origin
                 origin = next(
                     (
